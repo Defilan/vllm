@@ -18,20 +18,33 @@ from vllm.models.deepseek_v4_1.trellis import (
 )
 
 
-def test_independent_config_preserves_native_dense_scale_contract():
+@pytest.mark.parametrize("bits,codebook", [(2, "lut_e4m3"), (3, "mcg"), (4, "mcg"), (6, "mcg")])
+def test_independent_config_preserves_native_dense_scale_contract(bits, codebook):
     config = DeepseekV41TrellisConfig.from_config(
         {
             "format_version": 1,
             "manifest": "trellis-manifest.json",
-            "bits": 2,
-            "codebook": "lut_e4m3",
+            "bits": bits,
+            "codebook": codebook,
         }
     )
     assert config.is_scale_e8m0
     assert config.weight_block_size == [32, 32]
     assert config.is_checkpoint_fp8_serialized
-    with pytest.raises(ValueError, match="independent K2"):
-        DeepseekV41TrellisConfig.from_config({"bits": 3})
+
+
+@pytest.mark.parametrize(
+    "cfg",
+    [
+        {"bits": 3},
+        {"format_version": 1, "manifest": "trellis-manifest.json", "bits": 2, "codebook": "mcg"},
+        {"format_version": 1, "manifest": "trellis-manifest.json", "bits": 3, "codebook": "lut_e4m3"},
+        {"format_version": 1, "manifest": "trellis-manifest.json", "bits": 3, "codebook": "mul1"},
+    ],
+)
+def test_independent_config_rejects_unsupported(cfg):
+    with pytest.raises(ValueError, match="independent trellis manifest"):
+        DeepseekV41TrellisConfig.from_config(cfg)
 
 
 @pytest.mark.parametrize(
